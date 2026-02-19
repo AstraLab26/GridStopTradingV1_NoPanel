@@ -88,11 +88,11 @@ input double TradingStopStepPointA = 10.0;                    // Điểm A: các
 input double TradingStopStepSize = 5.0;                        // Step pips: giá đi thêm step thì đặt SL tại A, gồng lãi dịch SL theo step
 input ENUM_TP_ACTION ActionOnTradingStopStepComplete = TP_ACTION_STOP_EA; // Hành động khi giá chạm SL (0=Dừng EA, 1=Reset EA)
 
-//--- Input parameters - Chế độ cân bằng lệnh (reset khi đạt lãi phiên + lot âm dưới gốc)
+//--- Input parameters - Chế độ cân bằng lệnh (reset khi đạt điều kiện → đóng hết lệnh + lệnh chờ, chờ ĐK mới)
 input group "=== CHẾ ĐỘ CÂN BẰNG LỆNH ==="
 input bool EnableBalanceResetMode = false;           // Bật: đạt điều kiện bên dưới thì đóng hết lệnh + lệnh chờ, chờ ĐK mới khởi động lại (ưu tiên trước gồng lãi)
-input double BalanceResetSessionProfitUSD = 10.0;    // Điều kiện 1: Lãi phiên đạt tối thiểu (USD) — ví dụ 10 = phiên đang lãi ≥ 10 USD
-input double BalanceResetNegativeLotBelowBase = 4.0; // Điều kiện 2: Tổng lot lệnh đang âm phía ngược giá — giá trên gốc tính lot âm dưới gốc, giá dưới gốc tính lot âm trên gốc (lot)
+input double BalanceResetTotalOpenLot = 1.0;         // Điều kiện 1: Tổng lot lệnh đang mở (không tính lệnh chờ) ≥ X (0 = không kiểm tra)
+input double BalanceResetSessionProfitUSD = 50.0;    // Điều kiện 2: Lãi phiên đạt tối thiểu (USD) — ví dụ 50 = phiên đang lãi ≥ 50 USD (0 = không kiểm tra)
 
 //--- Input parameters - Giờ hoạt động
 input group "=== GIỜ HOẠT ĐỘNG ==="
@@ -204,7 +204,19 @@ int OnInit()
    }
    Print("Tổng số levels: ", ArraySize(gridLevels));
    if(EnableBalanceResetMode)
-      Print("--- Cân bằng lệnh: ON (lãi phiên >= ", BalanceResetSessionProfitUSD, " USD và lot âm phía ngược giá >= ", BalanceResetNegativeLotBelowBase, " → đóng hết, chờ ĐK mới) ---");
+   {
+      string conds = "";
+      if(BalanceResetTotalOpenLot > 0) conds += "tổng lot mở >= " + DoubleToString(BalanceResetTotalOpenLot, 2);
+      if(BalanceResetSessionProfitUSD > 0)
+      {
+         if(conds != "") conds += " và ";
+         conds += "lãi phiên >= " + DoubleToString(BalanceResetSessionProfitUSD, 0) + " USD";
+      }
+      if(conds != "")
+         Print("--- Cân bằng lệnh: ON (", conds, " → đóng hết, chờ ĐK mới) ---");
+      else
+         Print("--- Cân bằng lệnh: ON (chưa cấu hình điều kiện) ---");
+   }
    Print("--- Trading Stop, Step Tổng ---");
    bool tradingStopEnabled = false;
    if(TradingStopStepMode == TRADING_STOP_MODE_OPEN)
@@ -372,13 +384,14 @@ void OnTick()
    // Chế độ cân bằng: ưu tiên trước gồng lãi — đạt ngưỡng thì reset luôn, không kích hoạt gồng lãi
    if(EnableBalanceResetMode && basePrice > 0 && !isTradingStopActive)
    {
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double sessionPr = AccountInfoDouble(ACCOUNT_EQUITY) - initialEquity;
-      double negLot = (bid > basePrice) ? GetTotalNegativeLotBelowBase() : GetTotalNegativeLotAboveBase();
-      if(BalanceResetSessionProfitUSD > 0 && BalanceResetNegativeLotBelowBase > 0 &&
-         sessionPr >= BalanceResetSessionProfitUSD && negLot >= BalanceResetNegativeLotBelowBase)
+      double totalOpenLot = GetTotalLot();
+      bool cond1 = (BalanceResetTotalOpenLot <= 0) || (totalOpenLot >= BalanceResetTotalOpenLot);
+      bool cond2 = (BalanceResetSessionProfitUSD <= 0) || (sessionPr >= BalanceResetSessionProfitUSD);
+      bool hasAnyCond = (BalanceResetTotalOpenLot > 0) || (BalanceResetSessionProfitUSD > 0);
+      if(hasAnyCond && cond1 && cond2)
       {
-         Print("Cân bằng (ưu tiên trước gồng lãi): Lãi phiên ", sessionPr, " USD | Lot âm ", (bid > basePrice ? "dưới gốc" : "trên gốc"), " ", negLot, " → Đóng hết, chờ ĐK mới.");
+         Print("Cân bằng (ưu tiên trước gồng lãi): Tổng lot mở ", totalOpenLot, " | Lãi phiên ", sessionPr, " USD → Đóng hết, chờ ĐK mới.");
          BalanceResetAndWaitForNewBase();
          return;
       }
