@@ -107,6 +107,12 @@ input group "=== DỪNG EA THEO TÍCH LŨY LÃI ==="
 input bool EnableStopEAAtAccumulatedProfit = false;  // Bật: đạt ngưỡng tích lũy lãi thì dừng EA (đóng hết lệnh, không chạy nữa)
 input double StopEAAtAccumulatedProfitUSD = 0;        // Ngưỡng tích lũy lãi (USD) — tích lũy = tổng lãi sau mỗi lần reset (số dư tăng từ lúc EA bật), 0=tắt
 
+//--- Input parameters - Dừng/Reset EA theo SL (% lỗ so với vốn)
+input group "=== DỪNG/RESET EA THEO SL (% LỖ) ==="
+input bool EnableStopEAAtDrawdownPercent = false;   // Bật: khi vốn (Equity) âm X% so với vốn đầu phiên thì dừng hoặc reset
+input double StopEADrawdownPercent = 10.0;          // % lỗ: ví dụ 10 = khi Equity <= vốn đầu phiên × (1 - 10%) → kích hoạt
+input ENUM_TP_ACTION StopEAAtDrawdownAction = TP_ACTION_STOP_EA; // Hành động: 0=Dừng EA, 1=Reset EA (đóng hết, đặt gốc mới)
+
 //--- Input parameters - Cài đặt chung
 input group "=== CÀI ĐẶT CHUNG ==="
 input int MagicNumber = 123456;                 // Magic Number
@@ -274,6 +280,8 @@ int OnInit()
    }
    if(EnableStopEAAtAccumulatedProfit && StopEAAtAccumulatedProfitUSD > 0)
       Print("--- Dừng EA theo tích lũy lãi: ON (tích lũy >= ", StopEAAtAccumulatedProfitUSD, " USD thì dừng EA, đóng hết lệnh) ---");
+   if(EnableStopEAAtDrawdownPercent && StopEADrawdownPercent > 0)
+      Print("--- Dừng/Reset EA theo SL % lỗ: ON (Equity âm ", StopEADrawdownPercent, "% so với vốn đầu phiên → ", (StopEAAtDrawdownAction == TP_ACTION_RESET_EA ? "Reset EA" : "Dừng EA"), ") ---");
    Print("--- Giờ hoạt động ---");
    if(EnableTradingHours)
    {
@@ -379,6 +387,47 @@ void OnTick()
          firstStopLog = 1;
       }
       return;
+   }
+   
+   // Dừng/Reset EA theo SL (% lỗ so với vốn): Khi Equity âm X% so với vốn đầu phiên
+   if(EnableStopEAAtDrawdownPercent && StopEADrawdownPercent > 0 && initialEquity > 0 && basePrice > 0)
+   {
+      double currentEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+      double thresholdEquity = initialEquity * (1.0 - StopEADrawdownPercent / 100.0);
+      if(currentEquity <= thresholdEquity)
+      {
+         double drawdownPct = (initialEquity - currentEquity) / initialEquity * 100.0;
+         double accumulatedBefore = accumulatedProfit;
+         string slReason = (StopEAAtDrawdownAction == TP_ACTION_STOP_EA) ? "SL % lỗ - Dừng EA" : "SL % lỗ - Reset EA";
+         Print("========================================");
+         Print("=== SL % LỖ KÍCH HOẠT: Vốn âm ", DoubleToString(drawdownPct, 1), "% (", currentEquity, " / ", initialEquity, ") ===");
+         if(StopEAAtDrawdownAction == TP_ACTION_STOP_EA)
+         {
+            CloseAllPendingOrders();
+            CloseAllOpenPositions();
+            Sleep(200);
+            double accumulatedAfter = AccountInfoDouble(ACCOUNT_BALANCE) - initialBalanceAtStart;
+            double profitThisTime = accumulatedAfter - accumulatedBefore;
+            if(EnableResetNotification)
+               SendResetNotification(slReason, accumulatedBefore, profitThisTime, accumulatedAfter, resetCount);
+            eaStopped = true;
+            eaStoppedByTradingHours = false;
+            Print("Hành động: DỪNG EA");
+         }
+         else
+         {
+            isResetting = true;
+            BalanceResetAndWaitForNewBase();
+            isResetting = false;
+            double accumulatedAfter = AccountInfoDouble(ACCOUNT_BALANCE) - initialBalanceAtStart;
+            double profitThisTime = accumulatedAfter - accumulatedBefore;
+            if(EnableResetNotification)
+               SendResetNotification(slReason, accumulatedBefore, profitThisTime, accumulatedAfter, resetCount + 1);
+            Print("Hành động: RESET EA (đóng hết, đặt gốc mới)");
+         }
+         Print("========================================");
+         return;
+      }
    }
    
    // Chế độ cân bằng: ưu tiên trước gồng lãi — đạt ngưỡng thì reset luôn, không kích hoạt gồng lãi
