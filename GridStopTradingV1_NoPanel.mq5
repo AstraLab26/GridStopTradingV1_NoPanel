@@ -109,8 +109,8 @@ input double StopEAAtAccumulatedProfitUSD = 0;        // Ngưỡng tích lũy l�
 
 //--- Input parameters - Dừng/Reset EA theo SL (% lỗ so với vốn)
 input group "=== DỪNG/RESET EA THEO SL (% LỖ) ==="
-input bool EnableStopEAAtDrawdownPercent = false;   // Bật: khi vốn (Equity) âm X% so với vốn đầu phiên thì dừng hoặc reset
-input double StopEADrawdownPercent = 10.0;          // % lỗ: ví dụ 10 = khi Equity <= vốn đầu phiên × (1 - 10%) → kích hoạt
+input bool EnableStopEAAtDrawdownPercent = false;   // Bật: khi Equity âm X% so với vốn lúc EA khởi động thì dừng/reset
+input double StopEADrawdownPercent = 10.0;          // % lỗ: ví dụ 10 = khi Equity <= vốn khởi động × (1 - 10%) → kích hoạt (vốn = lúc bật EA thủ công hoặc tự động khởi động)
 input ENUM_TP_ACTION StopEAAtDrawdownAction = TP_ACTION_STOP_EA; // Hành động: 0=Dừng EA, 1=Reset EA (đóng hết, đặt gốc mới)
 
 //--- Input parameters - Cài đặt chung
@@ -281,7 +281,7 @@ int OnInit()
    if(EnableStopEAAtAccumulatedProfit && StopEAAtAccumulatedProfitUSD > 0)
       Print("--- Dừng EA theo tích lũy lãi: ON (tích lũy >= ", StopEAAtAccumulatedProfitUSD, " USD thì dừng EA, đóng hết lệnh) ---");
    if(EnableStopEAAtDrawdownPercent && StopEADrawdownPercent > 0)
-      Print("--- Dừng/Reset EA theo SL % lỗ: ON (Equity âm ", StopEADrawdownPercent, "% so với vốn đầu phiên → ", (StopEAAtDrawdownAction == TP_ACTION_RESET_EA ? "Reset EA" : "Dừng EA"), ") ---");
+      Print("--- Dừng/Reset EA theo SL % lỗ: ON (Equity âm ", StopEADrawdownPercent, "% so với vốn lúc EA khởi động → ", (StopEAAtDrawdownAction == TP_ACTION_RESET_EA ? "Reset EA" : "Dừng EA"), ") ---");
    Print("--- Giờ hoạt động ---");
    if(EnableTradingHours)
    {
@@ -389,7 +389,7 @@ void OnTick()
       return;
    }
    
-   // Dừng/Reset EA theo SL (% lỗ so với vốn): Khi Equity âm X% so với vốn đầu phiên
+   // Dừng/Reset EA theo SL (% lỗ so với vốn lúc EA khởi động): initialEquity = lúc bật EA thủ công hoặc tự động khởi động sau reset
    if(EnableStopEAAtDrawdownPercent && StopEADrawdownPercent > 0 && initialEquity > 0 && basePrice > 0)
    {
       double currentEquity = AccountInfoDouble(ACCOUNT_EQUITY);
@@ -400,7 +400,7 @@ void OnTick()
          double accumulatedBefore = accumulatedProfit;
          string slReason = (StopEAAtDrawdownAction == TP_ACTION_STOP_EA) ? "SL % lỗ - Dừng EA" : "SL % lỗ - Reset EA";
          Print("========================================");
-         Print("=== SL % LỖ KÍCH HOẠT: Vốn âm ", DoubleToString(drawdownPct, 1), "% (", currentEquity, " / ", initialEquity, ") ===");
+         Print("=== SL % LỖ KÍCH HOẠT: Equity âm ", DoubleToString(drawdownPct, 1), "% so với vốn khởi động (", currentEquity, " / ", initialEquity, ") ===");
          if(StopEAAtDrawdownAction == TP_ACTION_STOP_EA)
          {
             CloseAllPendingOrders();
