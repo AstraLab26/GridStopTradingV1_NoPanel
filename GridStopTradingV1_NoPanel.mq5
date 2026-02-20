@@ -114,11 +114,17 @@ input bool EnableStopEAAtDrawdownPercent = false;   // Bật: khi Equity lỗ X%
 input double StopEADrawdownPercent = 10.0;          // % lỗ (VD 10): kích hoạt khi Equity ≤ vốn khởi động × (1 - 10%) = vốn × 0.9
 input ENUM_TP_ACTION StopEAAtDrawdownAction = TP_ACTION_STOP_EA; // Khi kích hoạt: 0=Dừng EA (đóng hết, không chạy nữa), 1=Reset EA (đóng hết, đặt gốc mới, chạy tiếp)
 
+//--- Input parameters - Dừng/Reset EA theo SL (âm bao nhiêu USD so với phiên hiện tại)
+input group "=== DỪNG/RESET EA THEO SL (ÂM USD) ==="
+input bool EnableStopEAAtLossUSD = false;           // Bật: khi phiên lỗ ≥ X USD (so với vốn lúc EA khởi động / sau reset) → dừng hoặc reset
+input double StopEALossUSD = 100.0;                 // Số âm (USD): VD 100 = kích hoạt khi Equity ≤ vốn khởi động - 100 (lỗ phiên ≥ 100 USD)
+input ENUM_TP_ACTION StopEAAtLossUSDAction = TP_ACTION_STOP_EA; // Khi kích hoạt: 0=Dừng EA, 1=Reset EA
+
 //--- Input parameters - Cài đặt chung
 input group "=== CÀI ĐẶT CHUNG ==="
 input int MagicNumber = 123456;                 // Magic number của lệnh do EA đặt (phân biệt với lệnh tay/EA khác)
 input string CommentOrder = "Grid Stop V1";     // Comment hiển thị trên lệnh (sẽ thêm " A" hoặc " B")
-input bool EnableResetNotification = false;     // Bật: gửi push notification về điện thoại mỗi khi EA reset/dừng (SL %, cân bằng, Trading Stop...)
+input bool EnableResetNotification = false;     // Bật: gửi push notification khi EA reset/dừng (SL %, SL âm USD, cân bằng, Trading Stop...)
 
 //--- Global variables
 CTrade trade;
@@ -284,6 +290,8 @@ int OnInit()
       Print("--- Dừng EA theo tích lũy lãi: ON (tích lũy >= ", StopEAAtAccumulatedProfitUSD, " USD thì dừng EA, đóng hết lệnh) ---");
    if(EnableStopEAAtDrawdownPercent && StopEADrawdownPercent > 0)
       Print("--- Dừng/Reset EA theo SL % lỗ: ON (Equity âm ", StopEADrawdownPercent, "% so với vốn lúc EA khởi động → ", (StopEAAtDrawdownAction == TP_ACTION_RESET_EA ? "Reset EA" : "Dừng EA"), ") ---");
+   if(EnableStopEAAtLossUSD && StopEALossUSD > 0)
+      Print("--- Dừng/Reset EA theo SL âm USD: ON (lỗ phiên >= ", StopEALossUSD, " USD → ", (StopEAAtLossUSDAction == TP_ACTION_RESET_EA ? "Reset EA" : "Dừng EA"), ") ---");
    Print("--- Giờ hoạt động ---");
    if(EnableTradingHours)
    {
@@ -404,6 +412,46 @@ void OnTick()
          Print("========================================");
          Print("=== SL % LỖ KÍCH HOẠT: Equity âm ", DoubleToString(drawdownPct, 1), "% so với vốn khởi động (", currentEquity, " / ", initialEquity, ") ===");
          if(StopEAAtDrawdownAction == TP_ACTION_STOP_EA)
+         {
+            CloseAllPendingOrders();
+            CloseAllOpenPositions();
+            Sleep(200);
+            double accumulatedAfter = AccountInfoDouble(ACCOUNT_BALANCE) - initialBalanceAtStart;
+            double profitThisTime = accumulatedAfter - accumulatedBefore;
+            if(EnableResetNotification)
+               SendResetNotification(slReason, accumulatedBefore, profitThisTime, accumulatedAfter, resetCount);
+            eaStopped = true;
+            eaStoppedByTradingHours = false;
+            Print("Hành động: DỪNG EA");
+         }
+         else
+         {
+            isResetting = true;
+            BalanceResetAndWaitForNewBase();
+            isResetting = false;
+            double accumulatedAfter = AccountInfoDouble(ACCOUNT_BALANCE) - initialBalanceAtStart;
+            double profitThisTime = accumulatedAfter - accumulatedBefore;
+            if(EnableResetNotification)
+               SendResetNotification(slReason, accumulatedBefore, profitThisTime, accumulatedAfter, resetCount + 1);
+            Print("Hành động: RESET EA (đóng hết, đặt gốc mới)");
+         }
+         Print("========================================");
+         return;
+      }
+   }
+   
+   // Dừng/Reset EA theo SL (âm X USD): Lỗ phiên (vốn khởi động - Equity) ≥ X USD
+   if(EnableStopEAAtLossUSD && StopEALossUSD > 0 && initialEquity > 0 && basePrice > 0)
+   {
+      double currentEquity = AccountInfoDouble(ACCOUNT_EQUITY);
+      double sessionLossUSD = initialEquity - currentEquity;
+      if(sessionLossUSD >= StopEALossUSD)
+      {
+         double accumulatedBefore = accumulatedProfit;
+         string slReason = (StopEAAtLossUSDAction == TP_ACTION_STOP_EA) ? "SL âm USD - Dừng EA" : "SL âm USD - Reset EA";
+         Print("========================================");
+         Print("=== SL ÂM USD KÍCH HOẠT: Lỗ phiên ", DoubleToString(sessionLossUSD, 2), " USD >= ", StopEALossUSD, " USD (vốn khởi động ", initialEquity, " → Equity ", currentEquity, ") ===");
+         if(StopEAAtLossUSDAction == TP_ACTION_STOP_EA)
          {
             CloseAllPendingOrders();
             CloseAllOpenPositions();
