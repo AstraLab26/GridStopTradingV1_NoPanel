@@ -39,11 +39,11 @@ enum ENUM_GRID_DISTANCE_MODE
 
 //--- Input parameters - Cài đặt lưới
 input group "=== CÀI ĐẶT LƯỚI ==="
-input ENUM_GRID_DISTANCE_MODE GridDistanceMode = GRID_MODE_FIXED; // Chế độ khoảng cách lưới (0=Cố định, 1=Cấp số cộng)
-input double GridDistancePips = 20.0;           // Khoảng cách lưới cơ sở / bậc 1 (pips)
-input double GridStepPips = 100.0;              // Khoảng cách lưới cố định (pips) - Cấp số cộng: bậc 1=100, bậc 2 cách bậc 1=200, bậc 3 cách bậc 2=300...
-input bool AutoRefillOrders = true;             // Tự động bổ sung lệnh khi đóng
-input int MaxOpenForStopRefill = 2;             // Tối đa lệnh mở mỗi chiều để bổ sung lệnh chờ (vd: 2 = có 2 lệnh Buy mở thì không bổ sung Buy Stop)
+input ENUM_GRID_DISTANCE_MODE GridDistanceMode = GRID_MODE_FIXED; // Chế độ khoảng cách: 0=Cố định (bậc n cách n×x pips), 1=Cấp số cộng
+input double GridDistancePips = 20.0;           // [Cố định] Khoảng cách cơ sở (pips): bậc 1=x, bậc 2=2x, bậc 3=3x...
+input double GridStepPips = 100.0;              // [Cấp số cộng] Bước (pips): bậc 1=100, bậc 2 cách bậc 1=200, bậc 3 cách bậc 2=300...
+input bool AutoRefillOrders = true;             // Tự động đặt lại lệnh chờ khi lệnh đạt TP đóng
+input int MaxOpenForStopRefill = 2;             // Không bổ sung nếu đã có X lệnh mở cùng chiều (VD: 2 = có 2 Buy mở thì không đặt thêm Buy Stop)
 
 //--- Enum cho chế độ Take Profit
 enum ENUM_TP_MODE
@@ -54,70 +54,71 @@ enum ENUM_TP_MODE
 
 //--- Input parameters - Cài đặt lệnh Stop A (Buy Stop trên gốc, Sell Stop dưới gốc, có gấp thếp)
 input group "=== CÀI ĐẶT LỆNH STOP A (BUY STOP & SELL STOP) ==="
-input bool EnableStopOrders = true;             // [A] Bật lệnh Stop A
-input int MaxGridLevelsStop = 10;               // [A] Số lượng lưới tối đa (mỗi chiều, tối đa 100)
-input double LotSizeStop = 0.01;                // [A] Khối lượng (mức 1 - lưới gần đường gốc)
-input ENUM_TP_MODE TakeProfitMode = TP_MODE_FIXED_PIPS; // [A] Chế độ TP (0=Pips cố định, 1=Theo lưới: bậc k → TP tại bậc k+1)
-input double TakeProfitPipsStop = 30.0;         // [A] Take Profit (pips) - dùng khi chế độ = Pips cố định (0=off)
-input bool EnableMartingaleStop = false;        // [A] Bật gấp thếp theo mức lưới (lot)
-input ENUM_MARTINGALE_MODE MartingaleModeStop = MARTINGALE_MODE_MULTIPLIER; // [A] Chế độ (0=Cấp số nhân, 1=Cấp số cộng)
-input double MartingaleMultiplierStop = 2.0;   // [A] Hệ số gấp - Cấp số nhân (mức 2=x2, mức 3=x4...)
-input double MartingaleStepStop = 0.01;         // [A] Bước cộng - Cấp số cộng (mỗi mức cộng thêm)
-input double MaxLotCap = 0;                     // [A] Giới hạn lot lớn nhất mỗi lệnh (0=không giới hạn; VD: 1 = tối đa 1 lot/lệnh)
+input bool EnableStopOrders = true;             // [A] Bật/tắt lệnh Stop A
+input int MaxGridLevelsStop = 10;               // [A] Số bậc lưới tối đa mỗi chiều (1-100): trên gốc + dưới gốc
+input double LotSizeStop = 0.01;                // [A] Lot cơ sở (bậc 1 hoặc bậc bắt đầu gấp thếp)
+input ENUM_TP_MODE TakeProfitMode = TP_MODE_FIXED_PIPS; // [A] TP: 0=Pips cố định, 1=Theo lưới (bậc k → TP tại giá bậc k+1)
+input double TakeProfitPipsStop = 30.0;         // [A] Take Profit (pips) — chỉ dùng khi chế độ = Pips cố định (0=tắt TP)
+input bool EnableMartingaleStop = false;        // [A] Bật gấp thếp: lot tăng theo bậc lưới (từ bậc "Bắt đầu gấp thếp" trở lên)
+input int MartingaleStartLevelStop = 1;         // [A] Bậc bắt đầu gấp thếp: 5 = bậc 1-4 lot cơ sở, bậc 5 trở lên nhân/cộng lot (5=1 bước, 6=2 bước...). 1=bậc 1 đã gấp thếp
+input ENUM_MARTINGALE_MODE MartingaleModeStop = MARTINGALE_MODE_MULTIPLIER; // [A] Gấp thếp: 0=Cấp số nhân (x2,x4...), 1=Cấp số cộng (+0.01 mỗi bậc)
+input double MartingaleMultiplierStop = 2.0;   // [A] Hệ số nhân (chỉ khi Cấp số nhân): bậc sau = lot trước × hệ số (VD 2 → 0.01, 0.02, 0.04...)
+input double MartingaleStepStop = 0.01;         // [A] Lot cộng thêm mỗi bậc (chỉ khi Cấp số cộng): bậc sau = lot trước + bước
+input double MaxLotCap = 0;                     // [A] Lot tối đa mỗi lệnh (0=không giới hạn). VD 1 = không vượt 1 lot/lệnh
 
-//--- Input parameters - Cài đặt lệnh Stop B (không gấp thếp + Trading Stop)
+//--- Input parameters - Cài đặt lệnh Stop B (không gấp thếp, lot cố định mọi bậc)
 input group "=== CÀI ĐẶT LỆNH STOP B ==="
-input bool EnableStopOrdersB = false;           // [B] Bật lệnh Stop B
-input int MaxGridLevelsStopB = 10;             // [B] Số lượng lưới tối đa (mỗi chiều)
-input double LotSizeStopB = 0.01;               // [B] Khối lượng (cố định mọi mức)
-input ENUM_TP_MODE TakeProfitModeB = TP_MODE_FIXED_PIPS; // [B] Chế độ TP (0=Pips cố định, 1=Theo lưới)
-input double TakeProfitPipsStopB = 30.0;       // [B] Take Profit (pips) - khi chế độ = Pips cố định (0=off)
-input bool EnableTradingStopStopB = false;      // [B] Bật gồng lãi cho từng lệnh Stop B
-input double TradingStopStopBDistancePips = 10.0;  // [B] Khi giá cách entry X pips thì đặt SL dương (break-even)
-input double TradingStopStopBStepPips = 5.0;   // [B] Step pips: giá đi thêm step thì dịch SL theo step
+input bool EnableStopOrdersB = false;           // [B] Bật/tắt lệnh Stop B
+input int MaxGridLevelsStopB = 10;             // [B] Số bậc lưới tối đa mỗi chiều (1-100)
+input double LotSizeStopB = 0.01;               // [B] Lot cố định cho mọi bậc (Stop B không gấp thếp)
+input ENUM_TP_MODE TakeProfitModeB = TP_MODE_FIXED_PIPS; // [B] TP: 0=Pips cố định, 1=Theo lưới (bậc k → TP tại bậc k+1)
+input double TakeProfitPipsStopB = 30.0;       // [B] Take Profit (pips) — chỉ dùng khi chế độ = Pips cố định (0=tắt TP)
+input bool EnableTradingStopStopB = false;      // [B] Bật gồng lãi từng lệnh Stop B: đạt khoảng cách → đặt SL, giá đi thêm step → dịch SL
+input double TradingStopStopBDistancePips = 10.0;  // [B] Khi giá cách giá vào lệnh X pips → đặt SL hòa vốn (break-even)
+input double TradingStopStopBStepPips = 5.0;   // [B] Mỗi X pips giá đi thêm → dịch SL theo (gồng lãi từng lệnh B)
 
 //--- Input parameters - Trading Stop, Step Tổng (Gồng lãi)
 input group "=== TRADING STOP, STEP TỔNG (GỒNG LÃI) ==="
-input bool EnableTradingStopStepTotal = false;                 // Bật Trading Stop, Step Tổng
-input ENUM_TRADING_STOP_MODE TradingStopStepMode = TRADING_STOP_MODE_OPEN; // Chế độ gồng lãi (0=Lệnh mở, 1=Phiên, 2=Cả 2)
-input double TradingStopStepTotalProfit = 50.0;                // Lãi tổng lệnh đang mở để kích hoạt (USD, 0=off)
-input double TradingStopStepSessionProfit = 50.0;              // Lãi tổng phiên để kích hoạt (USD, dùng khi chế độ = Theo phiên, 0=off)
-input double TradingStopStepReturnProfitOpen = 20.0;           // Hủy gồng lãi: nếu lãi lệnh mở xuống dưới X USD (chỉ khi chưa đặt SL)
-input double TradingStopStepReturnProfitSession = 20.0;        // Hủy gồng lãi: nếu lãi phiên xuống dưới X USD (chỉ khi chưa đặt SL)
-input double TradingStopStepPointA = 10.0;                    // Điểm A: cách lệnh dương gần nhất x pips (pips)
-input double TradingStopStepSize = 5.0;                        // Step pips: giá đi thêm step thì đặt SL tại A, gồng lãi dịch SL theo step
-input ENUM_TP_ACTION ActionOnTradingStopStepComplete = TP_ACTION_STOP_EA; // Hành động khi giá chạm SL (0=Dừng EA, 1=Reset EA)
+input bool EnableTradingStopStepTotal = false;                 // Bật/tắt gồng lãi tổng (đạt lãi → đặt SL, dịch SL theo step)
+input ENUM_TRADING_STOP_MODE TradingStopStepMode = TRADING_STOP_MODE_OPEN; // Lấy lãi theo: 0=Lệnh mở, 1=Phiên, 2=Cả hai (đạt một là kích hoạt)
+input double TradingStopStepTotalProfit = 50.0;                // [Chế độ Lệnh mở] Lãi lệnh đang mở ≥ X USD → kích hoạt gồng lãi (0=tắt)
+input double TradingStopStepSessionProfit = 50.0;              // [Chế độ Phiên] Lãi phiên (Equity - vốn đầu phiên) ≥ X USD → kích hoạt (0=tắt)
+input double TradingStopStepReturnProfitOpen = 20.0;           // Hủy gồng lãi nếu lãi lệnh mở < X USD (chỉ khi chưa kéo SL)
+input double TradingStopStepReturnProfitSession = 20.0;        // Hủy gồng lãi nếu lãi phiên < X USD (chỉ khi chưa kéo SL)
+input double TradingStopStepPointA = 10.0;                    // Điểm A (pips): SL đặt cách lệnh dương gần nhất X pips
+input double TradingStopStepSize = 5.0;                        // Step (pips): giá đi thêm X pips → dịch SL (gồng lãi)
+input ENUM_TP_ACTION ActionOnTradingStopStepComplete = TP_ACTION_STOP_EA; // Khi giá chạm SL: 0=Dừng EA, 1=Reset EA (đóng hết, đặt gốc mới)
 
-//--- Input parameters - Chế độ cân bằng lệnh (reset khi đạt điều kiện → đóng hết lệnh + lệnh chờ, chờ ĐK mới)
+//--- Input parameters - Chế độ cân bằng lệnh (đạt điều kiện → đóng hết lệnh + lệnh chờ → đặt gốc mới)
 input group "=== CHẾ ĐỘ CÂN BẰNG LỆNH ==="
-input bool EnableBalanceResetMode = false;           // Bật: đạt điều kiện bên dưới thì đóng hết lệnh + lệnh chờ, chờ ĐK mới khởi động lại (ưu tiên trước gồng lãi)
-input double BalanceResetTotalOpenLot = 1.0;         // Điều kiện 1: Tổng lot lệnh đang mở (không tính lệnh chờ) ≥ X (0 = không kiểm tra)
-input double BalanceResetSessionProfitUSD = 50.0;    // Điều kiện 2: Lãi phiên đạt tối thiểu (USD) — ví dụ 50 = phiên đang lãi ≥ 50 USD (0 = không kiểm tra)
+input bool EnableBalanceResetMode = false;           // Bật: đạt CẢ hai điều kiện bên dưới thì đóng hết, đặt gốc mới (ưu tiên trước gồng lãi)
+input double BalanceResetTotalOpenLot = 1.0;         // Điều kiện 1: Tổng lot lệnh đang mở (chỉ lệnh đã khớp, không tính lệnh chờ) ≥ X. Đặt 0 = bỏ qua điều kiện này
+input double BalanceResetSessionProfitUSD = 50.0;    // Điều kiện 2: Lãi phiên (Equity - vốn đầu phiên) ≥ X USD. Đặt 0 = bỏ qua điều kiện này. Cần ít nhất 1 điều kiện > 0
 
 //--- Input parameters - Giờ hoạt động
 input group "=== GIỜ HOẠT ĐỘNG ==="
-input bool EnableTradingHours = false;          // Bật giờ hoạt động
+input bool EnableTradingHours = false;          // Bật: EA chỉ đặt lệnh mới trong khung giờ; ngoài giờ vẫn quản lý lệnh đang mở
 input int StartHour = 0;                        // Giờ bắt đầu (0-23)
 input int StartMinute = 0;                      // Phút bắt đầu (0-59)
 input int EndHour = 23;                        // Giờ kết thúc (0-23)
 input int EndMinute = 59;                      // Phút kết thúc (0-59)
 
-//--- Input parameters - Dừng EA theo tích lũy lãi (sau mỗi lần reset)
+//--- Input parameters - Dừng EA theo tích lũy lãi
 input group "=== DỪNG EA THEO TÍCH LŨY LÃI ==="
-input bool EnableStopEAAtAccumulatedProfit = false;  // Bật: đạt ngưỡng tích lũy lãi thì dừng EA (đóng hết lệnh, không chạy nữa)
-input double StopEAAtAccumulatedProfitUSD = 0;        // Ngưỡng tích lũy lãi (USD) — tích lũy = tổng lãi sau mỗi lần reset (số dư tăng từ lúc EA bật), 0=tắt
+input bool EnableStopEAAtAccumulatedProfit = false;  // Bật: tích lũy (số dư hiện tại - số dư lúc bật EA) ≥ ngưỡng → dừng EA vĩnh viễn
+input double StopEAAtAccumulatedProfitUSD = 0;        // Ngưỡng tích lũy (USD). Kiểm tra sau mỗi lần reset. 0=tắt
 
-//--- Input parameters - Dừng/Reset EA theo SL (% lỗ so với vốn)
+//--- Input parameters - Dừng/Reset EA theo SL (% lỗ so với vốn lúc EA khởi động)
 input group "=== DỪNG/RESET EA THEO SL (% LỖ) ==="
-input bool EnableStopEAAtDrawdownPercent = false;   // Bật: khi Equity âm X% so với vốn lúc EA khởi động thì dừng/reset
-input double StopEADrawdownPercent = 10.0;          // % lỗ: ví dụ 10 = khi Equity <= vốn khởi động × (1 - 10%) → kích hoạt (vốn = lúc bật EA thủ công hoặc tự động khởi động)
-input ENUM_TP_ACTION StopEAAtDrawdownAction = TP_ACTION_STOP_EA; // Hành động: 0=Dừng EA, 1=Reset EA (đóng hết, đặt gốc mới)
+input bool EnableStopEAAtDrawdownPercent = false;   // Bật: khi Equity lỗ X% so với vốn lúc EA khởi động (bật thủ công hoặc sau reset) → kích hoạt
+input double StopEADrawdownPercent = 10.0;          // % lỗ (VD 10): kích hoạt khi Equity ≤ vốn khởi động × (1 - 10%) = vốn × 0.9
+input ENUM_TP_ACTION StopEAAtDrawdownAction = TP_ACTION_STOP_EA; // Khi kích hoạt: 0=Dừng EA (đóng hết, không chạy nữa), 1=Reset EA (đóng hết, đặt gốc mới, chạy tiếp)
 
 //--- Input parameters - Cài đặt chung
 input group "=== CÀI ĐẶT CHUNG ==="
-input int MagicNumber = 123456;                 // Magic Number
-input string CommentOrder = "Grid Stop V1"; // Comment cho lệnh
-input bool EnableResetNotification = false;     // Bật thông báo về điện thoại khi EA reset
+input int MagicNumber = 123456;                 // Magic number của lệnh do EA đặt (phân biệt với lệnh tay/EA khác)
+input string CommentOrder = "Grid Stop V1";     // Comment hiển thị trên lệnh (sẽ thêm " A" hoặc " B")
+input bool EnableResetNotification = false;     // Bật: gửi push notification về điện thoại mỗi khi EA reset/dừng (SL %, cân bằng, Trading Stop...)
 
 //--- Global variables
 CTrade trade;
@@ -194,6 +195,7 @@ int OnInit()
    Print("  Lot (mức 1): ", LotSizeStop, " | TP: ", (TakeProfitMode == TP_MODE_GRID_LEVEL ? "Theo lưới" : (TakeProfitPipsStop > 0 ? StringFormat("%g pips", TakeProfitPipsStop) : "off")));
    if(EnableMartingaleStop)
    {
+      Print("    Gấp thếp: Bắt đầu tại bậc ", MartingaleStartLevelStop, " trở lên");
       if(MartingaleModeStop == MARTINGALE_MODE_ARITHMETIC)
          Print("    Gấp thếp: Cấp số cộng (+", MartingaleStepStop, ")");
       else
@@ -1636,9 +1638,10 @@ void PlacePendingOrder(ENUM_ORDER_TYPE orderType, double priceLevel, int levelNu
          lotSize = savedLotSize;
          Print("  → Sử dụng lot size đã lưu: ", lotSize, " cho mức ", levelNumber, " (A)");
       }
-      else if(enableMartingale && gridLevel > 1)
+      else if(enableMartingale && gridLevel >= MartingaleStartLevelStop)
       {
-         int steps = gridLevel - 1;
+         // Bậc 1: steps = 0 (lot cơ sở), 2=1 step... Bậc bắt đầu >= 2 (VD 5): bậc đó = 1 step (nhân/cộng), bậc dưới = lot cơ sở
+         int steps = (MartingaleStartLevelStop == 1) ? (gridLevel - 1) : (gridLevel - MartingaleStartLevelStop) + 1;
          if(martingaleMode == MARTINGALE_MODE_ARITHMETIC && martingaleStep > 0)
             lotSize = lotSize + steps * martingaleStep;
          else if(martingaleMultiplier > 0)
@@ -1670,9 +1673,9 @@ void PlacePendingOrder(ENUM_ORDER_TYPE orderType, double priceLevel, int levelNu
    {
       string ch = isStopA ? "A" : "B";
       string martingaleInfo = "";
-      if(isStopA && enableMartingale && gridLevel > 1)
+      if(isStopA && enableMartingale && gridLevel >= MartingaleStartLevelStop)
       {
-         int steps = gridLevel - 1;
+         int steps = (MartingaleStartLevelStop == 1) ? (gridLevel - 1) : (gridLevel - MartingaleStartLevelStop) + 1;
          martingaleInfo = " | Bậc " + IntegerToString(gridLevel);
          if(martingaleMode == MARTINGALE_MODE_ARITHMETIC)
             martingaleInfo += " (+" + DoubleToString(martingaleStep, 2) + ")";
